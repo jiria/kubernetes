@@ -9,7 +9,8 @@ go_library(
     name = "go_default_library",
     srcs = [
         "api.pb.go",
-        "constants.go",
+        "constants_linux.go",
+        "constants_windows.go",
     ],
     importpath = "k8s.io/kubernetes/pkg/kubelet/apis/deviceplugin/v1beta1",
     deps = [
