@@ -34,6 +34,7 @@ import (
 	podresourcesapi "k8s.io/kubernetes/pkg/kubelet/apis/podresources/v1alpha1"
 	"k8s.io/kubernetes/pkg/kubelet/cadvisor"
 	"k8s.io/kubernetes/pkg/kubelet/cm/cpumanager"
+	"k8s.io/kubernetes/pkg/kubelet/cm/devicemanager"
 	"k8s.io/kubernetes/pkg/kubelet/config"
 	kubecontainer "k8s.io/kubernetes/pkg/kubelet/container"
 	"k8s.io/kubernetes/pkg/kubelet/lifecycle"
@@ -50,6 +51,8 @@ type containerManagerImpl struct {
 	cadvisorInterface cadvisor.Interface
 	// Config of this node.
 	nodeConfig NodeConfig
+	// Interface for exporting and allocating devices reported by device plugins.
+	deviceManager devicemanager.Manager
 }
 
 func (cm *containerManagerImpl) Start(node *v1.Node,
@@ -69,6 +72,11 @@ func (cm *containerManagerImpl) Start(node *v1.Node,
 		}
 	}
 
+	// Starts device manager.
+	if err := cm.deviceManager.Start(devicemanager.ActivePodsFunc(activePods), sourcesReady); err != nil {
+		return err
+	}
+
 	return nil
 }
 
@@ -84,11 +92,23 @@ func NewContainerManager(mountUtil mount.Interface, cadvisorInterface cadvisor.I
 	}
 	capacity = cadvisor.CapacityFromMachineInfo(machineInfo)
 
-	return &containerManagerImpl{
+	cm := &containerManagerImpl{
 		capacity:          capacity,
 		nodeConfig:        nodeConfig,
 		cadvisorInterface: cadvisorInterface,
-	}, nil
+	}
+
+	klog.Infof("Creating device plugin manager: %t", devicePluginEnabled)
+	if devicePluginEnabled {
+		cm.deviceManager, err = devicemanager.NewManagerImpl()
+	} else {
+		cm.deviceManager, err = devicemanager.NewManagerStub()
+	}
+	if err != nil {
+		return nil, err
+	}
+	
+	return cm, nil
 }
 
 func (cm *containerManagerImpl) SystemCgroupsLimit() v1.ResourceList {
